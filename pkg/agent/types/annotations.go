@@ -41,4 +41,13 @@ const (
 
 	// L7FlowExporterAnnotationKey is the key of the L7 network flow export annotation that enables L7 network flow export for annotated Pod or Namespace based on the value of annotation which is direction of traffic.
 	L7FlowExporterAnnotationKey string = "visibility.antrea.io/l7-export"
+
+	// BpgPolicyLocalAsnOverrideKey is used for overriding the  localAsn on a BgpPolicy. Can be used for setting a 32bit ASN.
+	BpgPolicyLocalAsnOverrideKey string = "unsupported.bgp.antrea.io/local-asn-override"
+
+	// BgpPolicyPeerAsnOverridesKey is used for overriding peer ASNs on a BgpPolicy. Can be used for setting 32bit ASNs.
+	// The format is a JSON dictionary, using the same key format as is used for matching secrets to the peer.
+	// E.g., to override a peer with IP 10.0.0.1 and ASN 65551 to 4200000000, the following value would be used:
+	// { "10.0.0.1-65551": 4200000000 }
+	BgpPolicyPeerAsnOverridesKey string = "unsupported.bgp.antrea.io/peer-asn-overrides"
 )

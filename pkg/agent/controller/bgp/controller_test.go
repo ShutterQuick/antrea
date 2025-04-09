@@ -67,6 +67,10 @@ var (
 		Name:         localNodeName,
 	}
 
+	peer1MappedASN           = int64(4200000001)
+	ipv4Peer1MappedASN       = generateBGPPeer(ipv4Peer1Addr, peer1MappedASN, 179, 120)
+	ipv4Peer1ConfigMappedASN = generateBGPPeerConfig(&ipv4Peer1MappedASN, peer1AuthPassword)
+
 	peer1ASN          = int64(65531)
 	peer1AuthPassword = "bgp-peer1" // #nosec G101
 	ipv4Peer1Addr     = "192.168.77.251"
@@ -295,6 +299,52 @@ func TestBGPPolicyAdd(t *testing.T) {
 		expectedError string
 	}{
 		{
+			name:        "IPv4, as effective BGPPolicy, remap ASNs to 32bit based on attributes",
+			ipv4Enabled: true,
+			policiesToAdd: []runtime.Object{generateBGPPolicy(bgpPolicyName1,
+				creationTimestamp,
+				nodeLabels1,
+				179,
+				64512,
+				true,
+				false,
+				true,
+				true,
+				false,
+				map[string]string{
+					types.BpgPolicyLocalAsnOverrideKey: "4200000000",
+					types.BgpPolicyPeerAsnOverridesKey: fmt.Sprintf("{ \"%s-%d\": %d }", "192.168.77.251", peer1ASN, peer1MappedASN),
+				},
+				[]v1alpha1.BGPPeer{ipv4Peer1}),
+			},
+			objects: []runtime.Object{
+				ipv4ClusterIP1,
+				ipv4ClusterIP1Eps,
+				node,
+			},
+			expectedState: func() *bgpPolicyState {
+				state := generateBGPPolicyState(bgpPolicyName1,
+					179,
+					4200000000,
+					nodeAnnotations1[types.NodeBGPRouterIDAnnotationKey],
+					[]bgp.Route{clusterIPv4Route1},
+					[]bgp.PeerConfig{ipv4Peer1ConfigMappedASN},
+				)
+
+				// Correct the expected key back to that from the CIDR.
+				cdrKey := fmt.Sprintf("%s-%d", ipv4Peer1Addr, peer1MappedASN)
+				attributeKey := fmt.Sprintf("%s-%d", ipv4Peer1Addr, peer1ASN)
+				state.peerConfigs[attributeKey] = state.peerConfigs[cdrKey]
+				delete(state.peerConfigs, cdrKey)
+				return state
+			}(),
+			expectedCalls: func(mockBGPServer *bgptest.MockInterfaceMockRecorder) {
+				mockBGPServer.Start(gomock.Any())
+				mockBGPServer.AddPeer(gomock.Any(), ipv4Peer1ConfigMappedASN)
+				mockBGPServer.AdvertiseRoutes(gomock.Any(), []bgp.Route{clusterIPv4Route1})
+			},
+		},
+		{
 			name:        "IPv4, as effective BGPPolicy, advertise ClusterIP",
 			ipv4Enabled: true,
 			policiesToAdd: []runtime.Object{generateBGPPolicy(bgpPolicyName1,
@@ -307,6 +357,7 @@ func TestBGPPolicyAdd(t *testing.T) {
 				true,
 				true,
 				false,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1}),
 			},
 			objects: []runtime.Object{
@@ -340,6 +391,7 @@ func TestBGPPolicyAdd(t *testing.T) {
 				true,
 				true,
 				false,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv6Peer1})},
 			objects: []runtime.Object{
 				ipv6ClusterIP1,
@@ -373,6 +425,7 @@ func TestBGPPolicyAdd(t *testing.T) {
 				true,
 				false,
 				false,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1, ipv6Peer1})},
 			objects: []runtime.Object{
 				ipv4LoadBalancer,
@@ -409,6 +462,7 @@ func TestBGPPolicyAdd(t *testing.T) {
 				true,
 				true,
 				false,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1})},
 			objects: []runtime.Object{node},
 			crdObjects: []runtime.Object{
@@ -441,6 +495,7 @@ func TestBGPPolicyAdd(t *testing.T) {
 				true,
 				true,
 				true,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv6Peer1})},
 			objects: []runtime.Object{node},
 			expectedState: generateBGPPolicyState(bgpPolicyName1,
@@ -470,6 +525,7 @@ func TestBGPPolicyAdd(t *testing.T) {
 				true,
 				false,
 				false,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1, ipv6Peer1})},
 			objects: []runtime.Object{
 				ipv4ClusterIP2,
@@ -504,6 +560,7 @@ func TestBGPPolicyAdd(t *testing.T) {
 				false,
 				false,
 				false,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1}),
 				generateBGPPolicy(bgpPolicyName1,
 					creationTimestampAdd1s,
@@ -515,6 +572,7 @@ func TestBGPPolicyAdd(t *testing.T) {
 					false,
 					false,
 					false,
+					map[string]string{},
 					[]v1alpha1.BGPPeer{ipv4Peer1})},
 			objects: []runtime.Object{ipv4ClusterIP1, ipv4ClusterIP1Eps, node},
 			existingState: generateBGPPolicyState(bgpPolicyName2,
@@ -577,6 +635,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 		true,
 		false,
 		true,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer1,
 			ipv4Peer2,
 			ipv6Peer1,
@@ -603,6 +662,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 		true,
 		false,
 		true,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer1,
 			ipv4Peer2,
 			ipv6Peer1,
@@ -618,6 +678,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 		true,
 		false,
 		true,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer1,
 			ipv4Peer2,
 			ipv6Peer1,
@@ -662,6 +723,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 				true,
 				false,
 				true,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1,
 					ipv4Peer2,
 					ipv6Peer1,
@@ -712,6 +774,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 				true,
 				false,
 				true,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1,
 					ipv4Peer2,
 					ipv6Peer1,
@@ -735,6 +798,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 				false,
 				true,
 				false,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1,
 					ipv4Peer2,
 					ipv6Peer1,
@@ -782,6 +846,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 				false,
 				true,
 				false,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1,
 					ipv4Peer2,
 					ipv6Peer1,
@@ -828,6 +893,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 				true,
 				false,
 				true,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1,
 					ipv4Peer2,
 					ipv6Peer1,
@@ -878,6 +944,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 				true,
 				false,
 				true,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{updatedIPv4Peer2,
 					updatedIPv6Peer2,
 					ipv4Peer3,
@@ -921,6 +988,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 				true,
 				false,
 				true,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1,
 					ipv4Peer2,
 					ipv6Peer1,
@@ -941,6 +1009,7 @@ func TestBGPPolicyUpdate(t *testing.T) {
 				true,
 				false,
 				false,
+				map[string]string{},
 				[]v1alpha1.BGPPeer{ipv4Peer1,
 					updatedIPv4Peer2,
 					ipv6Peer1,
@@ -1003,6 +1072,7 @@ func TestBGPPolicyDelete(t *testing.T) {
 		true,
 		false,
 		false,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{
 			ipv4Peer1,
 			ipv6Peer1,
@@ -1027,6 +1097,7 @@ func TestBGPPolicyDelete(t *testing.T) {
 		false,
 		false,
 		false,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{
 			ipv4Peer2,
 			ipv6Peer2,
@@ -1050,6 +1121,7 @@ func TestBGPPolicyDelete(t *testing.T) {
 		false,
 		false,
 		false,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{
 			ipv4Peer2,
 			ipv6Peer2,
@@ -1174,6 +1246,7 @@ func TestNodeUpdate(t *testing.T) {
 		false,
 		false,
 		true,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer1, ipv6Peer1})
 	policy1State := generateBGPPolicyState(bgpPolicyName1,
 		179,
@@ -1191,6 +1264,7 @@ func TestNodeUpdate(t *testing.T) {
 		false,
 		false,
 		true,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer1, ipv6Peer1})
 	policy2State := generateBGPPolicyState(bgpPolicyName2,
 		1179,
@@ -1208,6 +1282,7 @@ func TestNodeUpdate(t *testing.T) {
 		false,
 		false,
 		true,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer1, ipv6Peer1})
 	crdObjects := []runtime.Object{
 		policy1,
@@ -1424,6 +1499,7 @@ func TestServiceLifecycle(t *testing.T) {
 		true,
 		false,
 		false,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer1})
 	c := newFakeController(t, []runtime.Object{node}, []runtime.Object{policy}, true, false)
 	mockBGPServer := c.mockBGPServer
@@ -1554,6 +1630,7 @@ func TestEgressLifecycle(t *testing.T) {
 		false,
 		true,
 		false,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer1})
 	c := newFakeController(t, []runtime.Object{node}, []runtime.Object{policy}, true, false)
 	mockBGPServer := c.mockBGPServer
@@ -1636,6 +1713,7 @@ func TestBGPPasswordUpdate(t *testing.T) {
 		false,
 		false,
 		true,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer1, ipv4Peer2, ipv4Peer3})
 	c := newFakeController(t, []runtime.Object{node}, []runtime.Object{policy}, true, false)
 
@@ -1738,6 +1816,7 @@ func TestSyncBGPPolicyFailures(t *testing.T) {
 		true,
 		false,
 		false,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer2})
 	policy2 := generateBGPPolicy(bgpPolicyName2,
 		creationTimestampAdd1s,
@@ -1749,6 +1828,7 @@ func TestSyncBGPPolicyFailures(t *testing.T) {
 		false,
 		false,
 		true,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer1})
 	policy3 := generateBGPPolicy(bgpPolicyName3,
 		creationTimestampAdd2s,
@@ -1760,6 +1840,7 @@ func TestSyncBGPPolicyFailures(t *testing.T) {
 		false,
 		false,
 		false,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{ipv4Peer2})
 	policy4 := generateBGPPolicy(bgpPolicyName4,
 		creationTimestampAdd3s,
@@ -1771,6 +1852,7 @@ func TestSyncBGPPolicyFailures(t *testing.T) {
 		true,
 		false,
 		false,
+		map[string]string{},
 		[]v1alpha1.BGPPeer{updatedIPv4Peer2})
 	objects := []runtime.Object{
 		ipv4LoadBalancer,
@@ -1971,6 +2053,7 @@ func generateBGPPolicy(name string,
 	advertiseLoadBalancerIP bool,
 	advertiseEgressIP bool,
 	advertisePodCIDR bool,
+	annotations map[string]string,
 	externalPeers []v1alpha1.BGPPeer) *v1alpha1.BGPPolicy {
 	var advertisement v1alpha1.Advertisements
 	advertisement.Service = &v1alpha1.ServiceAdvertisement{}
@@ -1995,6 +2078,7 @@ func generateBGPPolicy(name string,
 			Name:              name,
 			UID:               "test-uid",
 			CreationTimestamp: creationTimestamp,
+			Annotations:       annotations,
 		},
 		Spec: v1alpha1.BGPPolicySpec{
 			NodeSelector:   metav1.LabelSelector{MatchLabels: nodeSelector},
