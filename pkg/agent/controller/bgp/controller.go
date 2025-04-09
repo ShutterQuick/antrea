@@ -22,6 +22,7 @@ import (
 	"hash/fnv"
 	"net"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -363,6 +364,31 @@ func (c *Controller) syncBGPPolicy(ctx context.Context) error {
 	listenPort := *effectivePolicy.Spec.ListenPort
 	localASN := effectivePolicy.Spec.LocalASN
 
+	killServer := false
+	if err := getLocalAsnOverride(effectivePolicy, &localASN); err != nil {
+		klog.V(3).ErrorS(err, "BGPPolicy has invalid LocalASN override", klog.KObj(effectivePolicy))
+		killServer = true
+	}
+
+	peerAsnOverrides := map[string]uint32{}
+	if err := getPeerAsnOverrides(effectivePolicy, &peerAsnOverrides); err != nil {
+		klog.V(3).ErrorS(err, "BGPPolicy has invalid PeerASN override", klog.KObj(effectivePolicy))
+		killServer = true
+	}
+
+	if killServer {
+		// If we're here, it means the user set an invalid override asn attribute.
+		// This means our localAsn is invalid, so we must bail rather than attempt to continue.
+		if c.bgpPolicyState != nil {
+			if err := c.bgpPolicyState.bgpServer.Stop(ctx); err != nil {
+				return fmt.Errorf("failed to stop current BGP server: %w", err)
+			}
+			c.bgpPolicyState = nil
+		}
+
+		return nil
+	}
+
 	// If the BGPPolicy state is nil, a new BGP server should be started, initialize the BGPPolicy state to store the
 	// new BGP server, BGP policy name, listen port, local ASN, and router ID.
 	// If the BGPPolicy is not nil, any of the listen port, local AS number, or router ID have changed, stop the current
@@ -411,7 +437,7 @@ func (c *Controller) syncBGPPolicy(ctx context.Context) error {
 	}
 
 	// Reconcile BGP peers.
-	if err := c.reconcileBGPPeers(ctx, effectivePolicy.Spec.BGPPeers); err != nil {
+	if err := c.reconcileBGPPeers(ctx, peerAsnOverrides, effectivePolicy.Spec.BGPPeers); err != nil {
 		return err
 	}
 
@@ -423,8 +449,8 @@ func (c *Controller) syncBGPPolicy(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) reconcileBGPPeers(ctx context.Context, bgpPeers []v1alpha1.BGPPeer) error {
-	curPeerConfigs := c.getPeerConfigs(bgpPeers)
+func (c *Controller) reconcileBGPPeers(ctx context.Context, bgpPeerAsnOverrides map[string]uint32, bgpPeers []v1alpha1.BGPPeer) error {
+	curPeerConfigs := c.getPeerConfigs(bgpPeerAsnOverrides, bgpPeers)
 	prePeerConfigs := c.bgpPolicyState.peerConfigs
 	prePeerKeys := sets.KeySet(prePeerConfigs)
 	curPeerKeys := sets.KeySet(curPeerConfigs)
@@ -667,7 +693,7 @@ func (c *Controller) hasLocalEndpoints(svc *corev1.Service) bool {
 	return false
 }
 
-func (c *Controller) getPeerConfigs(peers []v1alpha1.BGPPeer) map[string]bgp.PeerConfig {
+func (c *Controller) getPeerConfigs(bgpPeerAsnOverrides map[string]uint32, peers []v1alpha1.BGPPeer) map[string]bgp.PeerConfig {
 	c.bgpPeerPasswordsMutex.RLock()
 	defer c.bgpPeerPasswordsMutex.RUnlock()
 
@@ -682,8 +708,15 @@ func (c *Controller) getPeerConfigs(peers []v1alpha1.BGPPeer) map[string]bgp.Pee
 				password = p
 			}
 
+			var peer *v1alpha1.BGPPeer = &peers[i]
+			if peerAsnOverride := bgpPeerAsnOverrides[peerKey]; peerAsnOverride != 0 {
+				peer = &v1alpha1.BGPPeer{}
+				*peer = peers[i]
+				peer.ASN = peerAsnOverride
+			}
+
 			peerConfigs[peerKey] = bgp.PeerConfig{
-				BGPPeer:  &peers[i],
+				BGPPeer:  peer,
 				Password: password,
 			}
 		}
@@ -1037,4 +1070,51 @@ func (c *Controller) GetBGPRoutes(ctx context.Context) (map[bgp.Route]RouteMetad
 		bgpRoutes[route] = routeMetadata
 	}
 	return bgpRoutes, nil
+}
+
+func validate32BitAsn(asn uint32) error {
+	switch value := asn; {
+	case value == 0:
+		return fmt.Errorf("must be greater than 0")
+	default:
+		return nil
+	}
+}
+
+func getLocalAsnOverride(bgpPolicy *v1alpha1.BGPPolicy, localAsn *uint32) error {
+	asnStr, ok := bgpPolicy.GetObjectMeta().GetAnnotations()[types.BpgPolicyLocalAsnOverrideKey]
+	if !ok {
+		return nil
+	}
+
+	asn, err := strconv.ParseUint(asnStr, 10, 32)
+	if err != nil {
+		return err
+	}
+
+	if err := validate32BitAsn(uint32(asn)); err != nil {
+		return err
+	}
+
+	*localAsn = uint32(asn)
+	return nil
+}
+
+func getPeerAsnOverrides(bgpPolicy *v1alpha1.BGPPolicy, overrideMap *map[string]uint32) error {
+	overrideMapStr, ok := bgpPolicy.GetObjectMeta().GetAnnotations()[types.BgpPolicyPeerAsnOverridesKey]
+	if !ok {
+		return nil
+	}
+
+	if err := json.Unmarshal([]byte(overrideMapStr), overrideMap); err != nil {
+		return err
+	}
+
+	for _, v := range *overrideMap {
+		if err := validate32BitAsn(v); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
