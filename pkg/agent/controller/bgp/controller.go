@@ -101,7 +101,7 @@ type bgpPolicyState struct {
 	// The port on which the local BGP server listens.
 	listenPort int32
 	// The AS number used by the local BGP server.
-	localASN int32
+	localASN uint32
 	// The router ID used by the local BGP server.
 	routerID string
 	// routes stores all BGP routes advertised to BGP peers.
@@ -385,7 +385,7 @@ func (c *Controller) syncBGPPolicy(ctx context.Context) error {
 
 		// Create a new BGP server.
 		bgpServer := c.newBGPServerFn(&bgp.GlobalConfig{
-			ASN:        uint32(localASN),
+			ASN:        localASN,
 			RouterID:   routerID,
 			ListenPort: listenPort,
 		})
@@ -691,7 +691,7 @@ func (c *Controller) getPeerConfigs(peers []v1alpha1.BGPPeer) map[string]bgp.Pee
 	return peerConfigs
 }
 
-func generateBGPPeerKey(address string, asn int32) string {
+func generateBGPPeerKey(address string, asn uint32) string {
 	return fmt.Sprintf("%s-%d", address, asn)
 }
 
@@ -984,9 +984,10 @@ func (c *Controller) updateBGPPeerPasswords(secret *corev1.Secret) {
 }
 
 // GetBGPPolicyInfo returns Name, RouterID, LocalASN and ListenPort of effective BGP Policy applied on the Node.
-func (c *Controller) GetBGPPolicyInfo() (string, string, int32, int32) {
+func (c *Controller) GetBGPPolicyInfo() (string, string, uint32, int32) {
 	var name, routerID string
-	var localASN, listenPort int32
+	var localASN uint32
+	var listenPort int32
 
 	c.bgpPolicyStateMutex.RLock()
 	defer c.bgpPolicyStateMutex.RUnlock()
