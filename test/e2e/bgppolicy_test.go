@@ -38,10 +38,10 @@ import (
 )
 
 const (
-	externalASN = int32(65000)
+	externalASN = int64(65000)
 
-	nodeASN        = int32(64512)
-	updatedNodeASN = int32(64513)
+	nodeASN        = int64(64512)
+	updatedNodeASN = int64(64513)
 
 	bgpPeerPassword = "password"
 
@@ -231,7 +231,7 @@ func runVtyshCommands(commands []string) (int, string, string, error) {
 	return exec.RunDockerExecCommand(externalInfo.externalFRRCID, "/usr/bin/vtysh", "/", nil, strings.Join(commands, "\n"))
 }
 
-func configureExternalBGPRouter(t *testing.T, externalASN, nodeASN int32, deferCleanup bool) {
+func configureExternalBGPRouter(t *testing.T, externalASN, nodeASN int64, deferCleanup bool) {
 	commands := []string{
 		"configure terminal",
 		fmt.Sprintf("router bgp %d", externalASN),

@@ -67,7 +67,7 @@ var (
 		Name:         localNodeName,
 	}
 
-	peer1ASN          = int32(65531)
+	peer1ASN          = int64(65531)
 	peer1AuthPassword = "bgp-peer1" // #nosec G101
 	ipv4Peer1Addr     = "192.168.77.251"
 	ipv6Peer1Addr     = "fec0::196:168:77:251"
@@ -86,7 +86,7 @@ var (
 		SessionState: bgp.SessionActive,
 	}
 
-	peer2ASN          = int32(65532)
+	peer2ASN          = int64(65532)
 	peer2AuthPassword = "bgp-peer2" // #nosec G101
 	ipv4Peer2Addr     = "192.168.77.252"
 	ipv6Peer2Addr     = "fec0::196:168:77:252"
@@ -110,7 +110,7 @@ var (
 	updatedIPv4Peer2Config = generateBGPPeerConfig(&updatedIPv4Peer2, peer2AuthPassword)
 	updatedIPv6Peer2Config = generateBGPPeerConfig(&updatedIPv6Peer2, peer2AuthPassword)
 
-	peer3ASN          = int32(65533)
+	peer3ASN          = int64(65533)
 	peer3AuthPassword = "bgp-peer3" // #nosec G101
 	ipv4Peer3Addr     = "192.168.77.253"
 	ipv6Peer3Addr     = "fec0::196:168:77:253"
@@ -1905,7 +1905,7 @@ func TestSyncBGPPolicyFailures(t *testing.T) {
 
 func generateBGPPolicyState(bgpPolicyName string,
 	listenPort int32,
-	localASN int32,
+	localASN int64,
 	routerID string,
 	bgpRoutes []bgp.Route,
 	peerConfigs []bgp.PeerConfig) *bgpPolicyState {
@@ -1965,7 +1965,7 @@ func generateBGPPolicy(name string,
 	creationTimestamp metav1.Time,
 	nodeSelector map[string]string,
 	listenPort int32,
-	localASN int32,
+	localASN int64,
 	advertiseClusterIP bool,
 	advertiseExternalIP bool,
 	advertiseLoadBalancerIP bool,
@@ -2125,7 +2125,7 @@ func generateEndpointSlice(svcName string,
 	return endpointSlice
 }
 
-func generateBGPPeer(ip string, asn, port, gracefulRestartTimeSeconds int32) v1alpha1.BGPPeer {
+func generateBGPPeer(ip string, asn int64, port int32, gracefulRestartTimeSeconds int32) v1alpha1.BGPPeer {
 	return v1alpha1.BGPPeer{
 		Address:                    ip,
 		Port:                       &port,
@@ -2185,7 +2185,7 @@ func TestGetBGPPolicyInfo(t *testing.T) {
 		name                  string
 		existingState         *bgpPolicyState
 		expectedBgpPolicyName string
-		expectedASN           int32
+		expectedASN           int64
 		expectedRouterID      string
 		expectedListenPort    int32
 	}{
@@ -2199,7 +2199,7 @@ func TestGetBGPPolicyInfo(t *testing.T) {
 				nil,
 			),
 			expectedBgpPolicyName: bgpPolicyName1,
-			expectedASN:           int32(65000),
+			expectedASN:           int64(65000),
 			expectedRouterID:      nodeAnnotations1[types.NodeBGPRouterIDAnnotationKey],
 			expectedListenPort:    int32(179),
 		},

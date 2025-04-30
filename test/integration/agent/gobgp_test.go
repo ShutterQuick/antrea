@@ -32,8 +32,8 @@ import (
 )
 
 func TestGoBGPLifecycle(t *testing.T) {
-	asn1 := int32(61179)
-	asn2 := int32(62179)
+	asn1 := int64(61179)
+	asn2 := int64(62179)
 	routerID1 := "192.168.1.1"
 	routerID2 := "192.168.1.2"
 	listenPort1 := int32(1179)
